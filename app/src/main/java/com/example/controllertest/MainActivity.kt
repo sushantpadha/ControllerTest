@@ -1,5 +1,6 @@
 package com.example.controllertest
 
+import io.github.controlwear.virtual.joystick.android.JoystickView
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.os.Build
@@ -11,29 +12,31 @@ import java.io.BufferedWriter
 import java.io.OutputStreamWriter
 import java.net.Socket
 import android.Manifest
+import android.view.View
 import android.widget.EditText
 import java.net.InetSocketAddress
 
-private val INTERNET_PERMISSION_CODE = 1001
-public val TIMEOUT_MS = 500
 
-val serverPort = 4321 // Server Port
+private const val INTERNET_PERMISSION_CODE = 1001
+const val TIMEOUT_MS = 500
 
-fun createJsonPacket(of_off : String ): String {
+fun createJsonPacket(speed: Int, angle: Int, status: String = "on"): String {
     val jsonData = JSONObject()
-    jsonData.put("status", "ok")
-    jsonData.put("gpio", "$of_off")
+    jsonData.put("status", status)
+    jsonData.put("angle", angle)
+    jsonData.put("speed", speed)
     return jsonData.toString()
 }
 
-fun send_package(ip_address :String, on_off : String) {
+fun sendPacket(ipAddress: String, serverPort: Int, speed: Int, angle: Int, status: String = "on") {
     Thread {
-        val jsonPacket = createJsonPacket(on_off)
+        val jsonPacket = createJsonPacket(speed, angle, status)
 
         val socket = Socket()
 
+        println("Trying to send packet: $jsonPacket")
         try {
-            val socketAddress = InetSocketAddress(ip_address, serverPort)
+            val socketAddress = InetSocketAddress(ipAddress, serverPort)
             socket.connect(socketAddress, TIMEOUT_MS)
 
             val writer = BufferedWriter(OutputStreamWriter(socket.getOutputStream()))
@@ -55,12 +58,14 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        val btn_on = findViewById<Button>(R.id.btnOn)
-        val btn_off = findViewById<Button>(R.id.btnOff)
-        val input_field = findViewById<EditText>(R.id.textIP)
-        var ip_address=""
+        val btnOn = findViewById<Button>(R.id.btnOn)
+        val btnOff = findViewById<Button>(R.id.btnOff)
 
-        ip_address = input_field.text.toString()
+        val ipAddressView = findViewById<EditText>(R.id.textIP)
+        val serverPortView = findViewById<EditText>(R.id.textPort)
+
+        var ipAddress = ipAddressView.text.toString()
+        var serverPort = serverPortView.text.toString().toInt()
 
         // check for permissions based on version
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -80,25 +85,36 @@ class MainActivity : AppCompatActivity() {
         }
 
 
-        btn_on.setOnClickListener{
-            ip_address = input_field.text.toString()
+        btnOn.setOnClickListener{
+            ipAddress = ipAddressView.text.toString()
+            serverPort = serverPortView.text.toString().toInt()
             Toast.makeText(
                 this@MainActivity,
                 "Turning On",
                 Toast.LENGTH_LONG
             ).show()
-            send_package("$ip_address","on")
+            sendPacket(ipAddress, serverPort, 0, 0, "on")
         }
-        btn_off.setOnClickListener{
-            ip_address = input_field.text.toString()
+        btnOff.setOnClickListener{
+            ipAddress = ipAddressView.text.toString()
+            serverPort = serverPortView.text.toString().toInt()
             Toast.makeText(
                 this@MainActivity,
                 "Turning Off",
                 Toast.LENGTH_LONG
             ).show()
-            send_package("$ip_address","off")
+            sendPacket(ipAddress, serverPort, 0, 0, "off")
         }
 
+        // snippet copied from https://github.com/controlwear/virtual-joystick-android#gist
+        val joystick = findViewById<View>(R.id.joystickView) as JoystickView
+        joystick.setOnMoveListener { angle, strength ->
+            // steeringAngle: 0 at vertical, -ve at left, +ve at right
+            // strength: [0, 100]
+            val steeringAngle = 90 - angle
+            // send packet
+            sendPacket(ipAddress, serverPort, strength, steeringAngle, "on")
+        }
 
     }
 }
